@@ -1,0 +1,17 @@
+# # config file version
+apiVersion: 1
+
+# # list of datasources that should be deleted from the database
+#deleteDatasources:
+#   - name: Graphite
+#     orgId: 1
+
+# # list of datasources to insert/update depending
+# # on what's available in the database
+datasources:
+ - name: 'InfluxDB'
+   type: 'influxdb'
+   access: 'proxy'
+   url: 'http://influxdb:8086'
+   database: 'luftdata'
+
