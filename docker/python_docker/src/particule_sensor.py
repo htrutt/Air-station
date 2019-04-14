@@ -1,6 +1,3 @@
-import csv
-import datetime
-
 import serial
 from serial.tools.list_ports import grep
 from influxdb import InfluxDBClient
@@ -19,6 +16,8 @@ class ParticuleSensor:
     def __init__(self, db_client):
         try:
             ports = list(serial.tools.list_ports.comports())
+            if not ports:
+                raise Exception("No serial port connection found, are you sure the particule sensor is connected?")
 
             for p in ports:
                 if VID and PID in p.hwid:
@@ -26,13 +25,14 @@ class ParticuleSensor:
 
             self._port = serial.Serial(self._port_path)
             self.db_client = db_client  # type: InfluxDBClient
+            self._read = True
 
         except serial.SerialException as e:
             print(e)
             raise
 
     def read_port(self):
-        while True:
+        while self._read:
             rcv = self._port.read(10)
             print("\r\nYou received:")
             print(rcv)
@@ -68,3 +68,6 @@ class ParticuleSensor:
                 return PM2_5, PM10
 
         raise InvalidDataException
+
+    def stop(self):
+        self._read = False

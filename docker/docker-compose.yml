@@ -30,6 +30,15 @@ services:
       # sudo mkdir -p /srv/docker/influxdb/data
       - /srv/docker/influxdb/data:/var/lib/influxdb
 
+  python:
+    build: python_docker/
+    image: python
+    container_name: python
+    links:
+      - influxdb
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+
   #telegraf:
   #  image: telegraf:latest
   #  container_name: telegraf

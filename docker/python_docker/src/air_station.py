@@ -1,17 +1,19 @@
 #!/bin/python3
+import signal
+import sys
+
 from particule_sensor import ParticuleSensor
 from influxdb import InfluxDBClient
 
-# TODO signal catcher for shutdown
 # TODO env variable instead for easy config within docker
 DB_NAME = 'luftdata'
 
 
 class AirStation:
     def __init__(self):
+        signal.signal(signal.SIGINT, self.signal_handler)
 
-        # TODO change hostname when moving this code to docker container
-        self.db_client = InfluxDBClient(host='localhost', port=8086)
+        self.db_client = InfluxDBClient(host='influxdb', port=8086)
         db_list = self.db_client.get_list_database()
         print(db_list)
         self.db_exists = False
@@ -35,8 +37,16 @@ class AirStation:
     def start_station(self):
         self._particule_sensor.read_port()
 
+    def signal_handler(self, sig, frame):
+        print('Signal caught, stopping now!')
+        self._particule_sensor.stop()
+        sys.exit(0)
+
 
 if __name__ == '__main__':
     print("Started air station")
     station = AirStation()
     station.start_station()
+
+
+
