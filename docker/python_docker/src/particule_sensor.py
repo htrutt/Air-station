@@ -52,7 +52,8 @@ class ParticuleSensor:
                 }
             }]
 
-        self.db_client.write_points(points=json_ojbect, time_precision="s")
+        if self.db_client is not None:
+            self.db_client.write_points(points=json_ojbect, time_precision="s")
 
     def _parse_data(self, data):
         if bytes([data[0]]) == b'\xAA' and bytes([data[1]]) == b'\xC0' and bytes([data[9]]) == b'\xAB':
