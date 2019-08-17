@@ -1,10 +1,15 @@
+import time
+
+import requests
 import serial
 from serial.tools.list_ports import grep
 from influxdb import InfluxDBClient
 
+from sds011 import SDS011
+
 VID = "1a86"
 PID = "7523"
-
+POST_URL = "https://api.luftdaten.info/v1/push-sensor-data/"
 
 class InvalidDataException(Exception):
     def __init__(self):
@@ -23,7 +28,10 @@ class ParticuleSensor:
                 if VID and PID in p.hwid:
                     self._port_path = p.device
 
-            self._port = serial.Serial(self._port_path)
+            self._sensor = SDS011(self._port_path, timeout=2, unit_of_measure=SDS011.UnitsOfMeasure.MassConcentrationEuropean)
+            print("SDS011 sensor info:")
+            print("Device ID: ", self._sensor.device_id)
+
             self.db_client = db_client  # type: InfluxDBClient
             self._read = True
 
@@ -33,15 +41,44 @@ class ParticuleSensor:
 
     def read_port(self):
         while self._read:
-            rcv = self._port.read(10)
-            print("\r\nYou received:")
-            print(rcv)
+            print("Waking up the sensor")
+            self._sensor.workstate = SDS011.WorkStates.Measuring
+            # Just to demonstrate. Should be 60 seconds to get qualified values.
+            # The sensor needs to warm up!
+            time.sleep(10)
+            while self._read:
+                last1 = time.time()
+                values = self._sensor.get_values()
+                if values is not None:
+                    print("Values measured in µg/m³:    PM2.5 {} , PM10 {}".format(values[1], values[0]))
+                    self.postData(url=POST_URL, pin=1, PM25=values[1], PM10=values[0])
+                    break
+                print("Waited %d seconds, no values read, wait 2 seconds, and try to read again" % (
+                        time.time() - last1))
+                time.sleep(2)
+            print("Read was succesfull. Going to sleep for 10 seconds")
+            self._sensor.workstate = SDS011.WorkStates.Sleeping
+            time.sleep(10)
 
-            try:
-                PM2_5, PM10 = self._parse_data(rcv)
-                self._save_to_db(PM2_5, PM10)
-            except InvalidDataException as e:
-                print("Invalid data received")
+        print("\nSensor reset to normal")
+        self._sensor.reset()
+        self._sensor = None
+
+
+    def postData(self, url, pin, PM25,PM10):
+        r = requests.post(url,
+                      json={
+                          "software_version": "python-dusty 0.0.1",
+                          "sensordatavalues": [{"value_type": "P2", "value": PM25},
+                                               {"value_type": "P1", "value": PM10}]
+                      },
+                      headers={
+                          "X-Pin": str(pin),
+                          "X-Sensor": "raspi-"+self._sensor.device_id,
+                      }
+                      )
+        print("Response code {}".format(r.status_code))
+        print("Response  {}".format(r.text))
 
     def _save_to_db(self, PM2_5, PM10):
         json_ojbect =[{
@@ -54,21 +91,6 @@ class ParticuleSensor:
 
         if self.db_client is not None:
             self.db_client.write_points(points=json_ojbect, time_precision="s")
-
-    def _parse_data(self, data):
-        if bytes([data[0]]) == b'\xAA' and bytes([data[1]]) == b'\xC0' and bytes([data[9]]) == b'\xAB':
-            calculated_check = 0
-
-            for i in range(2, 8, 1):
-                calculated_check += data[i]
-
-            if (calculated_check % 256) == data[8]:
-                PM2_5 = (data[3] * 256 + data[2]) / 10
-                PM10 = (data[5] * 256 + data[4]) / 10
-                print("Received valid data PM2,5 {} PM10 {}".format(PM2_5, PM10))
-                return PM2_5, PM10
-
-        raise InvalidDataException
 
     def stop(self):
         self._read = False
